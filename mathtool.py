@@ -1,90 +1,178 @@
-import sys
-import math
+"""mathtool - решение уравнений и обработка числовых рядов.
 
-MAX_VALUE = 10000
+Точка входа программы. Весь ввод-вывод и завершение программы
+находятся здесь; расчёты вынесены в пакет calc.
+"""
+
+import sys
+
+from calc.equation import check_coefficient, solve_equation
+from calc.integration import FUNCTIONS, RESULT_DIGITS, check_limits, integrate
+from calc.series import DIGITS, FORMULAS, sum_by_count, sum_by_eps
+from calc.stats import REPORT, parse_numbers
+from cli import build_parser
+
+# Текст для показателя, который невозможно вычислить.
+NOT_EXISTS = "НЕ СУЩЕСТВУЕТ"
+
+
+def print_error(message):
+    """Печатает сообщение об ошибке в stderr."""
+    print(f"ОШИБКА: {message}", file=sys.stderr)
 
 
 def read_coefficient(name):
-    """Запрашивает коэффициент с клавиатуры, преобразует в int и проверяет диапазон."""
+    """Запрашивает коэффициент с клавиатуры.
+
+    Возвращает целое число. Если ввод неверный, вызывает ValueError.
+    """
     raw = input(f"Введите {name}: ")
     try:
         value = int(raw)
     except ValueError:
-        print("ОШИБКА: коэффициент не является целым числом", file=sys.stderr)
-        sys.exit(1)
-    if abs(value) > MAX_VALUE:
-        print("ОШИБКА: значение вне допустимого диапазона", file=sys.stderr)
-        sys.exit(1)
+        raise ValueError("коэффициент не является целым числом")
+    check_coefficient(value)
     return value
 
 
-# --- 1. Разбор параметров командной строки ---
-args = sys.argv[1:]
+def read_text(filename):
+    """Читает текст из файла, а если имя не задано (None), из stdin.
 
-if len(args) == 0 or args[0] == "--help":
-    print("mathtool – решение уравнений вида A*x^2 + B*x + C = 0")
-    print()
-    print("Использование:")
-    print("  python mathtool.py                        вывод справки")
-    print("  python mathtool.py --help                 вывод справки")
-    print("  python mathtool.py solve                  ввод коэффициентов с клавиатуры")
-    print("  python mathtool.py solve -a 1 -b -3 -c 2  решение с заданными коэффициентами")
-    sys.exit(0)
-
-if args[0] != "solve":
-    print("ОШИБКА: неизвестная команда", file=sys.stderr)
-    sys.exit(1)
-
-# --- 2. Получение исходных данных ---
-if len(args) == 1:
-    a = read_coefficient("A")
-    b = read_coefficient("B")
-    c = read_coefficient("C")
-elif len(args) == 7:
-    if args[1] != "-a" or args[3] != "-b" or args[5] != "-c":
-        print("ОШИБКА: неизвестный параметр", file=sys.stderr)
-        sys.exit(1)
-    raw_a = args[2]
-    raw_b = args[4]
-    raw_c = args[6]
-
+    Возвращает прочитанный текст. При ошибке чтения вызывает ValueError.
+    """
+    if filename is None:
+        return sys.stdin.read()
     try:
-        a = int(raw_a)
-        b = int(raw_b)
-        c = int(raw_c)
-    except ValueError:
-        print("ОШИБКА: коэффициент не является целым числом", file=sys.stderr)
-        sys.exit(1)
-    if max(abs(a), abs(b), abs(c)) > MAX_VALUE:
-        print("ОШИБКА: значение вне допустимого диапазона", file=sys.stderr)
-        sys.exit(1)
-else:
-    print("ОШИБКА: неверный набор параметров", file=sys.stderr)
-    sys.exit(1)
+        with open(filename, encoding="utf-8-sig") as f:
+            return f.read()
+    except OSError:
+        raise ValueError(f"не удалось открыть файл '{filename}'")
+    except UnicodeDecodeError:
+        raise ValueError(f"файл '{filename}' не является текстом в UTF-8")
 
-# --- 3. Определение вида уравнения и решение ---
-if a == 0:
-    if b != 0:
+
+def format_value(value):
+    """Превращает значение показателя в текст для вывода.
+
+    None -> "НЕ СУЩЕСТВУЕТ", целое -> как есть, дробное -> 3 знака.
+    """
+    if value is None:
+        return NOT_EXISTS
+    if isinstance(value, int):
+        return str(value)
+    return f"{value:.3f}"
+
+
+def handle_solve(args):
+    """Команда solve. Возвращает код возврата: 0 - успех, 1 - ошибка."""
+    try:
+        if args.a is None and args.b is None and args.c is None:
+            # Параметров нет: спрашиваем коэффициенты с клавиатуры.
+            a = read_coefficient("A")
+            b = read_coefficient("B")
+            c = read_coefficient("C")
+        elif args.a is None or args.b is None or args.c is None:
+            # Указана только часть параметров.
+            raise ValueError("неверный набор параметров")
+        else:
+            a, b, c = args.a, args.b, args.c
+            for value in (a, b, c):
+                check_coefficient(value)
+        kind, d, roots = solve_equation(a, b, c)
+    except ValueError as e:
+        print_error(str(e))
+        return 1
+
+    if kind == "linear":
         print("Уравнение линейное")
-        x = -c / b
-        print(f"x = {x:.3f}")
+        print(f"x = {roots[0]:.3f}")
     else:
-        print("ОШИБКА: это не уравнение, неизвестное отсутствует", file=sys.stderr)
-        sys.exit(1)
-else:
-    print("Уравнение квадратное")
-    d = b * b - 4 * a * c
-    print(f"D = {d}")
+        print("Уравнение квадратное")
+        print(f"D = {d}")
+        if len(roots) == 2:
+            print(f"x1 = {roots[0]:.3f}")
+            print(f"x2 = {roots[1]:.3f}")
+        elif len(roots) == 1:
+            print(f"x = {roots[0]:.3f}")
+        else:
+            print("Действительных корней нет")
+    return 0
 
-    if d > 0:
-        x1 = (-b + math.sqrt(d)) / (2 * a)
-        x2 = (-b - math.sqrt(d)) / (2 * a)
-        print(f"x1 = {x1:.3f}")
-        print(f"x2 = {x2:.3f}")
-    elif d == 0:
-        x = -b / (2 * a)
-        print(f"x = {x:.3f}")
-    else:
-        print("Действительных корней нет")
 
-sys.exit(0)
+def handle_stats(args):
+    """Команда stats. Возвращает код возврата: 0 - успех, 1 - ошибка."""
+    try:
+        text = read_text(args.input)
+        numbers = parse_numbers(text)
+    except ValueError as e:
+        print_error(str(e))
+        return 1
+
+    print(f"Количество: {len(numbers)}")
+    for label, function in REPORT.items():
+        value = function(numbers)
+        print(f"{label}: {format_value(value)}")
+    return 0
+
+
+def handle_series(args):
+    """Команда series. Возвращает код возврата: 0 - успех, 1 - ошибка."""
+    term, formula_text = FORMULAS[args.func]
+    try:
+        if args.terms is not None:
+            result, count = sum_by_count(term, args.terms)
+        else:
+            result, count = sum_by_eps(term, args.eps)
+    except ValueError as e:
+        print_error(str(e))
+        return 1
+
+    # Вывод только после успешного расчёта: ошибка печатается раньше формулы.
+    print(formula_text)
+    print(f"Слагаемых: {count}")
+    print(f"Сумма ряда: {result:.{DIGITS}f}")
+    return 0
+
+
+def handle_integrate(args):
+    """Команда integrate. Возвращает код возврата: 0 - успех, 1 - ошибка."""
+    function, formula_text, low, high, inclusive = FUNCTIONS[args.func]
+    try:
+        check_limits(args.lower, args.upper, low, high, inclusive)
+        result = integrate(function, args.lower, args.upper, args.steps)
+    except ValueError as e:
+        print_error(str(e))
+        return 1
+
+    # Вывод только после успешного расчёта: ошибка печатается раньше формулы.
+    print(formula_text)
+    print(f"Значение интеграла: {result:.{RESULT_DIGITS}f}")
+    return 0
+
+
+# Таблица: имя команды -> функция-обработчик.
+HANDLERS = {
+    "solve": handle_solve,
+    "stats": handle_stats,
+    "series": handle_series,
+    "integrate": handle_integrate,
+}
+
+
+def main():
+    """Разбирает командную строку и запускает нужную команду.
+
+    Возвращает код возврата программы.
+    """
+    parser = build_parser()
+    if len(sys.argv) == 1:
+        # Запуск без параметров: справка, как в ЛР1.
+        parser.print_help()
+        return 0
+    args = parser.parse_args()
+    handler = HANDLERS[args.command]
+    return handler(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
