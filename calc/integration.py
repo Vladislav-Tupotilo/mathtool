@@ -5,6 +5,7 @@
 """
 
 import math
+from calc.equation import solve_equation
 
 # Наибольшее допустимое число шагов интегрирования.
 MAX_STEPS = 100000
@@ -20,6 +21,11 @@ def f_ratio(x):
 def f_root(x):
     """Подынтегральная функция root: sqrt(x^2 + 1)."""
     return math.sqrt(x * x + 1)
+
+def I(x):
+    return -x**2 + x + 3
+
+x = solve_equation(-1, 1, 3)
 
 
 # Таблица функций: имя -> (функция, текст формулы для вывода,
@@ -44,14 +50,16 @@ def in_interval(x, low, high, inclusive):
 def check_limits(a, b, low, high, inclusive):
     """Проверяет пределы интегрирования a и b.
 
-    Оба предела должны быть конечными, b должно быть больше a,
+    Оба предела должны быть конечными, a меньше b,
     и оба предела должны лежать в промежутке функции.
     При нарушении вызывает ValueError.
     """
     if not (math.isfinite(a) and math.isfinite(b)):
-        raise ValueError("пределы интегрирования должны быть конечными числами")
+        raise ValueError("пределы интегрирования должны быть конечными")
     if not a < b:
-        raise ValueError("верхний предел должен быть больше нижнего")
+        raise ValueError(
+            "начальный предел не меньше конечного"
+        )
     if not (in_interval(a, low, high, inclusive)
             and in_interval(b, low, high, inclusive)):
         if inclusive:
@@ -59,7 +67,15 @@ def check_limits(a, b, low, high, inclusive):
         else:
             left, right = "(", ")"
         raise ValueError(
-            f"пределы интегрирования вне промежутка {left}{low}; {high}{right}"
+            f"предел вне промежутка {left}{low}; {high}{right}"
+        )
+
+
+def check_steps(steps):
+    """Проверяет число шагов: от 1 до MAX_STEPS. Иначе ValueError."""
+    if not 1 <= steps <= MAX_STEPS:
+        raise ValueError(
+            f"количество шагов вне диапазона: от 1 до {MAX_STEPS}"
         )
 
 
@@ -67,14 +83,11 @@ def integrate(func, a, b, steps):
     """Интеграл func от a до b методом левых прямоугольников.
 
     func - подынтегральная функция одного аргумента.
-    steps - число шагов, от 1 до MAX_STEPS; иначе вызывает ValueError.
-    Пределы предполагаются уже проверенными (check_limits).
+    Пределы и число шагов предполагаются уже проверенными.
     """
-    if steps < 1 or steps > MAX_STEPS:
-        raise ValueError(f"количество шагов должно быть от 1 до {MAX_STEPS}")
     dx = (b - a) / steps
     result = 0.0
     for i in range(steps):
-        x = a + i * dx
+        x = a + i * dx          # x считается заново, а не накоплением
         result += func(x) * dx
     return result

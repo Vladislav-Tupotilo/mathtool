@@ -1,8 +1,8 @@
 """Статистика числовой последовательности.
 
 В модуле только расчёты: ввода, вывода и завершения программы здесь нет.
-Каждый показатель - отдельная функция: принимает список чисел и возвращает
-число либо None, если показатель не существует.
+Каждый показатель - отдельная функция: принимает непустой список чисел
+и возвращает число либо None, если показатель не существует.
 """
 
 import math
@@ -23,48 +23,52 @@ def parse_numbers(text):
     """
     tokens = text.split()
     if len(tokens) == 0:
-        raise ValueError("нет данных: не указано ни одного числа")
+        raise ValueError("последовательность пуста")
     if len(tokens) > MAX_COUNT:
-        raise ValueError(f"слишком много чисел (не более {MAX_COUNT})")
+        raise ValueError(f"чисел больше {MAX_COUNT}")
 
     numbers = []
     for token in tokens:
         try:
             value = float(token)
         except ValueError:
-            raise ValueError(f"'{token}' не является числом")
+            raise ValueError(f"{token} не является числом")
         if not math.isfinite(value):
-            raise ValueError(f"'{token}' не является конечным числом")
+            raise ValueError(f"{token} не является конечным числом")
         if abs(value) > MAX_ABS:
-            raise ValueError(f"значение вне допустимого диапазона: '{token}'")
+            raise ValueError(f"{token} по модулю больше {MAX_ABS}")
         numbers.append(value)
     return numbers
 
 
+def count_numbers(numbers):
+    """0. Количество чисел."""
+    return len(numbers)
+
+
 def total(numbers):
     """1. Сумма A1 + A2 + ... + AN."""
-    return sum(numbers)
+    result = 0
+    for x in numbers:
+        result += x
+    return result
 
 
 def mean(numbers):
-    """2. Среднее арифметическое: сумма / N. None, если чисел нет."""
-    if len(numbers) == 0:
-        return None
+    """2. Среднее арифметическое: сумма / N."""
     return total(numbers) / len(numbers)
 
 
 def sum_squares(numbers):
     """3. Сумма квадратов A1^2 + A2^2 + ... + AN^2."""
-    result = 0.0
+    result = 0
     for x in numbers:
-        result += x * x
+        result += x ** 2
     return result
 
 
 def root_mean_square(numbers):
     """4. Среднее квадратическое: корень из (сумма квадратов / N)."""
-    if len(numbers) == 0:
-        return None
     return math.sqrt(sum_squares(numbers) / len(numbers))
 
 
@@ -72,12 +76,9 @@ def squared_deviations_sum(numbers):
     """Вспомогательная: сумма (Ai - среднее)^2, считается в два прохода.
 
     Первый проход - среднее, второй - сумма квадратов отклонений.
-    Для пустого списка возвращает None.
     """
     m = mean(numbers)
-    if m is None:
-        return None
-    result = 0.0
+    result = 0
     for x in numbers:
         result += (x - m) ** 2
     return result
@@ -85,18 +86,12 @@ def squared_deviations_sum(numbers):
 
 def variance(numbers):
     """5. Дисперсия: сумма (Ai - среднее)^2 / N."""
-    s = squared_deviations_sum(numbers)
-    if s is None:
-        return None
-    return s / len(numbers)
+    return squared_deviations_sum(numbers) / len(numbers)
 
 
 def standard_deviation_pop(numbers):
     """6. СКО: корень из дисперсии."""
-    v = variance(numbers)
-    if v is None:
-        return None
-    return math.sqrt(v)
+    return math.sqrt(variance(numbers))
 
 
 def standard_deviation_sample(numbers):
@@ -106,54 +101,58 @@ def standard_deviation_sample(numbers):
     """
     if len(numbers) < 2:
         return None
-    s = squared_deviations_sum(numbers)
-    return math.sqrt(s / (len(numbers) - 1))
+    return math.sqrt(squared_deviations_sum(numbers) / (len(numbers) - 1))
 
 
 def minimum(numbers):
-    """8. Наименьшее число. None, если чисел нет."""
-    if len(numbers) == 0:
-        return None
-    return min(numbers)
+    """8. Наименьшее число."""
+    result = numbers[0]
+    for x in numbers:
+        if x < result:
+            result = x
+    return result
 
 
 def maximum(numbers):
-    """9. Наибольшее число. None, если чисел нет."""
-    if len(numbers) == 0:
-        return None
-    return max(numbers)
+    """9. Наибольшее число."""
+    result = numbers[0]
+    for x in numbers:
+        if x > result:
+            result = x
+    return result
 
 
 def count_positive(numbers):
     """10. Количество положительных чисел (больше нуля)."""
-    count = 0
+    result = 0
     for x in numbers:
         if x > 0:
-            count += 1
-    return count
+            result += 1
+    return result
 
 
 def count_negative(numbers):
     """11. Количество отрицательных чисел (меньше нуля)."""
-    count = 0
+    result = 0
     for x in numbers:
         if x < 0:
-            count += 1
-    return count
+            result += 1
+    return result
 
 
-# Таблица показателей: подпись строки -> функция расчёта.
+# Таблица вывода: (подпись, функция расчёта, формат значения).
 # Порядок строк в таблице - это порядок вывода.
-REPORT = {
-    "Сумма": total,
-    "Ср. арифм.": mean,
-    "Сумма кв.": sum_squares,
-    "Ср. кв.": root_mean_square,
-    "Дисперсия": variance,
-    "СКО": standard_deviation_pop,
-    "Станд. откл.": standard_deviation_sample,
-    "Наименьшее": minimum,
-    "Наибольшее": maximum,
-    "Положительных": count_positive,
-    "Отрицательных": count_negative,
-}
+REPORT = [
+    ("Количество", count_numbers, "d"),
+    ("Сумма", total, ".3f"),
+    ("Ср. арифм.", mean, ".3f"),
+    ("Сумма кв.", sum_squares, ".3f"),
+    ("Ср. кв.", root_mean_square, ".3f"),
+    ("Дисперсия", variance, ".3f"),
+    ("СКО", standard_deviation_pop, ".3f"),
+    ("Станд. откл.", standard_deviation_sample, ".3f"),
+    ("Наименьшее", minimum, ".3f"),
+    ("Наибольшее", maximum, ".3f"),
+    ("Положительных", count_positive, "d"),
+    ("Отрицательных", count_negative, "d"),
+]

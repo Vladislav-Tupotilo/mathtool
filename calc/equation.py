@@ -9,13 +9,16 @@ import math
 MAX_VALUE = 10000
 
 
-def check_coefficient(value):
-    """Проверяет, что коэффициент по модулю не больше MAX_VALUE.
+def check_coefficients(value):
+    """Проверяет коэффициенты уравнения.
 
-    Если значение вне допустимого диапазона, вызывает ValueError.
+    Параметр coefficients — словарь {"A": a, "B": b, "C": c}.
+    Возбуждает ValueError, если какой-либо коэффициент по модулю больше
+    MAX_VALUE или если A == 0 и B == 0 (неизвестного в уравнении нет).
     """
-    if abs(value) > MAX_VALUE:
-        raise ValueError("значение вне допустимого диапазона")
+    for name, value in value.items():
+        if abs(value) > MAX_VALUE:
+            raise ValueError(f"коэффициент {name} вне допустимого диапазона")
 
 
 def solve_equation(a, b, c):

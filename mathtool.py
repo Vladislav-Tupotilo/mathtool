@@ -5,10 +5,21 @@
 """
 
 import sys
+import time
 
-from calc.equation import check_coefficient, solve_equation
-from calc.integration import FUNCTIONS, RESULT_DIGITS, check_limits, integrate
-from calc.series import DIGITS, FORMULAS, sum_by_count, sum_by_eps
+from calc.arrays import (
+    binary_search,
+    check_ascending,
+    check_bounds,
+    check_count,
+    check_search_value,
+    fill_array,
+    parse_array,
+)
+from calc.equation import check_coefficients, solve_equation
+from calc.integration import FUNCTIONS, RESULT_DIGITS, check_limits, integrate, check_steps
+from calc.series import DIGITS, FORMULAS, sum_by_count, sum_by_eps, check_eps, check_terms
+from calc.sorting import METHODS
 from calc.stats import REPORT, parse_numbers
 from cli import build_parser
 
@@ -17,12 +28,12 @@ NOT_EXISTS = "НЕ СУЩЕСТВУЕТ"
 
 
 def print_error(message):
-    """Печатает сообщение об ошибке в stderr."""
+    """Печатает сообщение об ошибке в поток ошибок (stderr)."""
     print(f"ОШИБКА: {message}", file=sys.stderr)
 
 
 def read_coefficient(name):
-    """Запрашивает коэффициент с клавиатуры.
+    """Запрашивает коэффициент с клавиатуры и проверяет его.
 
     Возвращает целое число. Если ввод неверный, вызывает ValueError.
     """
@@ -31,57 +42,64 @@ def read_coefficient(name):
         value = int(raw)
     except ValueError:
         raise ValueError("коэффициент не является целым числом")
-    check_coefficient(value)
+    check_coefficients({name: value})
     return value
+
+def read_lines_with_input():
+    """Читает строки функцией input(), пока не встретится пустая строка.
+
+    Пустой считается и строка из одних пробелов. Конец ввода (например,
+    при передаче данных через конвейер) тоже завершает чтение.
+    Возвращает все прочитанные строки одним текстом.
+    """
+    lines = []
+    while True:
+        try:
+            line = input()
+        except EOFError:
+            break
+        if line.strip() == "":
+            break
+        lines.append(line)
+    return "\n".join(lines)
+
+def read_file(filename):
+    """Читает весь текстовый файл. При ошибке чтения вызывает ValueError."""
+    try:
+        with open(filename, encoding="utf-8-sig") as handle:
+            return handle.read()
+    except OSError:
+        raise ValueError("файл не открывается")
+    except UnicodeDecodeError:
+        raise ValueError("файл не является текстом в UTF-8")
 
 
 def read_text(filename):
-    """Читает текст из файла, а если имя не задано (None), из stdin.
+    """Читает текст из файла, а если имя не задано (None), с клавиатуры.
 
+    Если filename равен None - читает строки через input() до пустой строки.
     Возвращает прочитанный текст. При ошибке чтения вызывает ValueError.
     """
     if filename is None:
-        return sys.stdin.read()
-    try:
-        with open(filename, encoding="utf-8-sig") as f:
-            return f.read()
-    except OSError:
-        raise ValueError(f"не удалось открыть файл '{filename}'")
-    except UnicodeDecodeError:
-        raise ValueError(f"файл '{filename}' не является текстом в UTF-8")
-
-
-def format_value(value):
-    """Превращает значение показателя в текст для вывода.
-
-    None -> "НЕ СУЩЕСТВУЕТ", целое -> как есть, дробное -> 3 знака.
-    """
-    if value is None:
-        return NOT_EXISTS
-    if isinstance(value, int):
-        return str(value)
-    return f"{value:.3f}"
+        return read_lines_with_input()
+    return read_file(filename)  
 
 
 def handle_solve(args):
-    """Команда solve. Возвращает код возврата: 0 - успех, 1 - ошибка."""
-    try:
-        if args.a is None and args.b is None and args.c is None:
-            # Параметров нет: спрашиваем коэффициенты с клавиатуры.
-            a = read_coefficient("A")
-            b = read_coefficient("B")
-            c = read_coefficient("C")
-        elif args.a is None or args.b is None or args.c is None:
-            # Указана только часть параметров.
-            raise ValueError("неверный набор параметров")
-        else:
-            a, b, c = args.a, args.b, args.c
-            for value in (a, b, c):
-                check_coefficient(value)
-        kind, d, roots = solve_equation(a, b, c)
-    except ValueError as e:
-        print_error(str(e))
-        return 1
+    """Команда solve. Возвращает код возврата 0."""
+    if args.a is None and args.b is None and args.c is None:
+        # Параметров нет: спрашиваем коэффициенты с клавиатуры.
+        a = read_coefficient("A")
+        b = read_coefficient("B")
+        c = read_coefficient("C")
+    elif args.a is None or args.b is None or args.c is None:
+        # Указана только часть коэффициентов.
+        raise ValueError("укажите все три коэффициента либо ни одного")
+    else:
+        a, b, c = args.a, args.b, args.c
+        check_coefficients({"A": a, "B": b, "C": c})
+
+    kind, d, roots = solve_equation(a, b, c)
 
     if kind == "linear":
         print("Уравнение линейное")
@@ -100,34 +118,29 @@ def handle_solve(args):
 
 
 def handle_stats(args):
-    """Команда stats. Возвращает код возврата: 0 - успех, 1 - ошибка."""
-    try:
-        text = read_text(args.input)
-        numbers = parse_numbers(text)
-    except ValueError as e:
-        print_error(str(e))
-        return 1
+    """Команда stats. Возвращает код возврата 0."""
+    numbers = parse_numbers(read_text(args.input))
 
-    print(f"Количество: {len(numbers)}")
-    for label, function in REPORT.items():
+    for label, function, form in REPORT:
         value = function(numbers)
-        print(f"{label}: {format_value(value)}")
+        if value is None:
+            print(f"{label}: {NOT_EXISTS}")
+        else:
+            print(f"{label}: {value:{form}}")
     return 0
 
 
 def handle_series(args):
-    """Команда series. Возвращает код возврата: 0 - успех, 1 - ошибка."""
+    """Команда series. Возвращает код возврата 0."""
     term, formula_text = FORMULAS[args.func]
-    try:
-        if args.terms is not None:
-            result, count = sum_by_count(term, args.terms)
-        else:
-            result, count = sum_by_eps(term, args.eps)
-    except ValueError as e:
-        print_error(str(e))
-        return 1
 
-    # Вывод только после успешного расчёта: ошибка печатается раньше формулы.
+    if args.terms is not None:
+        check_terms(args.terms)
+        result, count = sum_by_count(term, args.terms)
+    else:
+        check_eps(args.eps)
+        result, count = sum_by_eps(term, args.eps)
+
     print(formula_text)
     print(f"Слагаемых: {count}")
     print(f"Сумма ряда: {result:.{DIGITS}f}")
@@ -135,19 +148,100 @@ def handle_series(args):
 
 
 def handle_integrate(args):
-    """Команда integrate. Возвращает код возврата: 0 - успех, 1 - ошибка."""
+    """Команда integrate. Возвращает код возврата 0."""
     function, formula_text, low, high, inclusive = FUNCTIONS[args.func]
-    try:
-        check_limits(args.lower, args.upper, low, high, inclusive)
-        result = integrate(function, args.lower, args.upper, args.steps)
-    except ValueError as e:
-        print_error(str(e))
-        return 1
 
-    # Вывод только после успешного расчёта: ошибка печатается раньше формулы.
+    check_limits(args.lower, args.upper, low, high, inclusive)
+    check_steps(args.steps)
+    result = integrate(function, args.lower, args.upper, args.steps)
+
     print(formula_text)
     print(f"Значение интеграла: {result:.{RESULT_DIGITS}f}")
     return 0
+
+
+def read_array(filename):
+    """Читает массив целых чисел из файла или с клавиатуры.
+
+    Возвращает список целых. При ошибке данных или чтения
+    вызывает ValueError.
+    """
+    if filename is None:
+        print("Введите числа (пустая строка завершает ввод):", file=sys.stderr)
+        text = read_lines_with_input()
+    else:
+        text = read_file(filename)
+    return parse_array(text)
+
+def format_array(array):
+    """Превращает список чисел в строку: числа через пробел."""
+    words = []
+    for x in array:
+        words.append(str(x))
+    return " ".join(words)
+
+
+def write_array(array, filename):
+    """Выводит массив на экран, а если задан filename, записывает в файл.
+
+    При записи в файл печатает число записанных элементов и имя файла.
+    """
+    line = format_array(array)
+    if filename is None:
+        print(line)
+        return
+    try:
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except OSError:
+        raise ValueError("не удалось записать файл")
+    print(f"Записано элементов: {len(array)} в файл {filename}")
+
+
+def measure(name, operation, parameters):
+    """Выполняет operation(*parameters) и печатает время в stderr.
+
+    Возвращает результат операции.
+    """
+    start = time.perf_counter()
+    result = operation(*parameters)
+    elapsed = time.perf_counter() - start
+    print(f"Время операции {name}: {elapsed:.6f} с", file=sys.stderr)
+    return result
+
+def handle_fill(args):
+    """Команда fill. Возвращает код возврата 0; ошибки - исключения."""
+    check_count(args.count)
+    check_bounds(args.min, args.max)
+    array = fill_array(args.count, args.min, args.max, args.seed)
+    write_array(array, args.output)
+    return 0
+
+
+def handle_sort(args):
+    """Команда sort. Возвращает код возврата 0; ошибки - исключения."""
+    array = read_array(args.input)
+    method = METHODS[args.method]
+    descending = args.order == "desc"
+    # Время измеряется только вокруг расчёта.
+    measure(f"sort ({args.method})", method, [array, descending])
+    write_array(array, args.output)
+    print("Массив отсортирован.")
+    return 0
+
+
+def handle_search(args):
+    """Команда search. Возвращает код возврата: 0 - найдено, 1 - нет."""
+    check_search_value(args.value)
+    array = read_array(args.input)
+    check_ascending(array)
+    index = binary_search(array, args.value)
+    if index is None:
+        print(f"Значение {args.value} не найдено.")
+        return 1
+    print(f"Значение {args.value} имеет элемент с индексом {index + 1}.")
+    return 0
+
 
 
 # Таблица: имя команды -> функция-обработчик.
@@ -156,23 +250,29 @@ HANDLERS = {
     "stats": handle_stats,
     "series": handle_series,
     "integrate": handle_integrate,
+    "fill": handle_fill,
+    "sort": handle_sort,
+    "search": handle_search,
 }
 
 
-def main():
-    """Разбирает командную строку и запускает нужную команду.
+def main(argv):
+    """Разбирает параметры argv и запускает нужную команду.
 
+    argv - список параметров без имени программы (sys.argv[1:]).
     Возвращает код возврата программы.
     """
     parser = build_parser()
-    if len(sys.argv) == 1:
-        # Запуск без параметров: справка, как в ЛР1.
+    args = parser.parse_args(argv)
+    if args.command is None:
         parser.print_help()
         return 0
-    args = parser.parse_args()
-    handler = HANDLERS[args.command]
-    return handler(args)
+    try:
+        return HANDLERS[args.command](args)
+    except (ValueError, OSError) as error:
+        print_error(str(error))
+        return 1
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

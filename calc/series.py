@@ -6,78 +6,97 @@
 
 import math
 
-# Наибольшее допустимое количество слагаемых.
+# Наибольшее допустимое количество слагаемых (--terms).
 MAX_TERMS = 10000
-# Наибольшая допустимая точность (остановка по eps).
+# Наибольшее допустимое eps, то есть самая грубая точность (--eps).
 MAX_EPS = 0.0001
-# Предел числа повторений цикла, число шагов которого заранее неизвестно.
+# Предел числа повторений цикла суммирования по точности.
 MAX_ITERATIONS = 100000
 
 # Количество знаков после запятой в сумме, получается из MAX_EPS.
 DIGITS = math.ceil(-math.log10(MAX_EPS))
 
 
+def sign(n):
+    """Знак n-го слагаемого: нечётное +1, чётное -1."""
+    if n % 2 == 0:
+        return -1
+    return 1
+
+
 def term_sqplus(n):
-    """Модуль n-го слагаемого ряда sqplus: 1 / (n^2 + 1)."""
-    return 1 / (n * n + 1)
+    """n-е слагаемое ряда sqplus со знаком: (-1)^(n+1) / (n^2 + 1)."""
+    return sign(n) / (n * n + 1)
 
 
 def term_third(n):
-    """Модуль n-го слагаемого ряда third: 1 / (3 * n)."""
-    return 1 / (3 * n)
+    """n-е слагаемое ряда third со знаком: (-1)^(n+1) / (3 * n)."""
+    return sign(n) / (3 * n)
+
+def D(n):
+    return sign(n)/(n**3 - 12)
 
 
 # Таблица рядов: имя -> (функция слагаемого, текст формулы для вывода).
 FORMULAS = {
     "sqplus": (term_sqplus, "S = 1/(1^2+1) - 1/(2^2+1) + 1/(3^2+1) - ..."),
     "third": (term_third, "S = 1/3 - 1/6 + 1/9 - 1/12 + ..."),
+    "D": (D,""),
 }
 
 
-def apply_sign(n, value):
-    """Расставляет знак: нечётное слагаемое со знаком +, чётное со знаком -."""
-    if n % 2 == 1:
-        return value
-    return -value
+def check_terms(terms):
+    """Проверяет количество слагаемых: от 1 до MAX_TERMS.
+
+    При нарушении вызывает ValueError.
+    """
+    if not 1 <= terms <= MAX_TERMS:
+        raise ValueError(
+            f"количество слагаемых вне диапазона: от 1 до {MAX_TERMS}"
+        )
+
+
+def check_eps(eps):
+    """Проверяет точность: конечное число, больше 0 и не больше MAX_EPS.
+
+    При нарушении вызывает ValueError.
+    """
+    if not (math.isfinite(eps) and 0 < eps <= MAX_EPS):
+        raise ValueError(
+            f"точность вне диапазона: больше 0 и не больше {MAX_EPS}"
+        )
 
 
 def sum_by_count(term, count):
     """Сумма первых count слагаемых ряда.
 
-    term - функция, возвращающая модуль n-го слагаемого.
+    term - функция слагаемого: получает номер, возвращает значение со знаком.
     Возвращает кортеж (сумма, количество слагаемых).
-    Если count вне диапазона 1..MAX_TERMS, вызывает ValueError.
     """
-    if count < 1 or count > MAX_TERMS:
-        raise ValueError(
-            f"количество слагаемых должно быть от 1 до {MAX_TERMS}"
-        )
-    result = 0.0
+    result = 0
     for n in range(1, count + 1):
-        result += apply_sign(n, term(n))
+        result += term(n)
     return result, count
 
 
 def sum_by_eps(term, eps):
     """Суммирует ряд, пока модуль слагаемого не станет меньше eps.
 
-    Слагаемое, которое оказалось меньше eps, считается последним
-    и входит в сумму.
-    term - функция, возвращающая модуль n-го слагаемого.
+    Слагаемое, которое оказалось меньше eps, входит в сумму последним.
+    term - функция слагаемого: получает номер, возвращает значение со знаком.
     Возвращает кортеж (сумма, количество слагаемых).
-    Если eps вне диапазона (0; MAX_EPS] или за MAX_ITERATIONS шагов
-    точность не достигнута, вызывает ValueError.
+    Если за MAX_ITERATIONS повторений точность не достигнута,
+    вызывает ValueError.
     """
-    if not (0 < eps <= MAX_EPS):
-        raise ValueError(
-            f"точность должна быть больше 0 и не больше {MAX_EPS}"
-        )
-    result = 0.0
-    for n in range(1, MAX_ITERATIONS + 1):
+    result = 0
+    n = 0
+    while True:
+        n += 1
         value = term(n)
-        result += apply_sign(n, value)
+        result += value
         if abs(value) < eps:
             return result, n
-    raise ValueError(
-        f"точность не достигнута за {MAX_ITERATIONS} шагов"
-    )
+        if n >= MAX_ITERATIONS:
+            raise ValueError(
+                f"точность не достигнута за {MAX_ITERATIONS} повторений"
+            )
